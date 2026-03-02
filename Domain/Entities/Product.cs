@@ -8,7 +8,7 @@
 
         public int CategoryId { get; set; }
 
-        public Category Category { get; set; } = null!;
+        public Category? Category { get; set; }
 
         public ICollection<ShoppingListProduct> ListProducts { get; set; } = new List<ShoppingListProduct>();
     }

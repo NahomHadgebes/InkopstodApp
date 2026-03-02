@@ -3,6 +3,7 @@ using InkopstodApp.Application.DTOs;
 using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace InkopstodApp.API.Controllers
 {
@@ -19,12 +20,11 @@ namespace InkopstodApp.API.Controllers
             _mapper = mapper;
         }
 
-        // GET: api/shoppinglists
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ShoppingListDto>>> GetShoppingLists()
+        public async Task<ActionResult<IEnumerable<ShoppingList>>> GetShoppingLists()
         {
             var lists = await _repository.GetAllAsync();
-            return Ok(_mapper.Map<IEnumerable<ShoppingListDto>>(lists));
+            return Ok(lists);
         }
 
         // GET: api/shoppinglists/5
@@ -92,6 +92,21 @@ namespace InkopstodApp.API.Controllers
             };
 
             return Ok(stats);
+        }
+
+        // DELETE: api/ShoppingLists/5
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteShoppingList(int id)
+        {
+            var list = await _repository.GetByIdAsync(id);
+            if (list == null)
+            {
+                return NotFound();
+            }
+
+            await _repository.DeleteAsync(id);
+
+            return NoContent();
         }
     }
 }

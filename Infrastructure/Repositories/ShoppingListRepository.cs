@@ -17,7 +17,7 @@ namespace InkopstodApp.Infrastructure.Repositories
         public async Task<IEnumerable<ShoppingList>> GetAllAsync()
         {
             return await _context.ShoppingLists
-                .Include(sl => sl.ListProducts)
+                .Include(l => l.ListProducts)
                     .ThenInclude(lp => lp.Product)
                 .ToListAsync();
         }
