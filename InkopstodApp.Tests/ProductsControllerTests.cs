@@ -1,11 +1,13 @@
-﻿using Moq;
-using Xunit;
-using AutoMapper;
-using Microsoft.AspNetCore.Mvc;
+﻿using AutoMapper;
 using InkopstodApp.API.Controllers;
-using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Application.DTOs;
+using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Domain.Entities;
+using InkopstodApp.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
+using Moq;
+using Xunit;
+using Microsoft.EntityFrameworkCore;
 
 namespace InkopstodApp.Tests
 {
@@ -14,12 +16,22 @@ namespace InkopstodApp.Tests
         private readonly Mock<IProductRepository> _mockRepo;
         private readonly Mock<IMapper> _mockMapper;
         private readonly ProductsController _controller;
+        private readonly ApplicationDbContext _context;
 
         public ProductsControllerTests()
         {
             _mockRepo = new Mock<IProductRepository>();
             _mockMapper = new Mock<IMapper>();
-            _controller = new ProductsController(_mockRepo.Object, _mockMapper.Object);
+
+            // Skapa alternativ för en falsk databas i minnet
+            var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .Options;
+
+            var context = new ApplicationDbContext(options);
+
+            // Skapa controllern med de tre argument den nu kräver
+            _controller = new ProductsController(_mockRepo.Object, _mockMapper.Object, context);
         }
 
         [Fact]
