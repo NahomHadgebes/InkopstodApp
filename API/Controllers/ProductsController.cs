@@ -3,6 +3,8 @@ using InkopstodApp.Application.DTOs;
 using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using InkopstodApp.Infrastructure.Persistence;
 
 namespace InkopstodApp.API.Controllers
 {
@@ -12,11 +14,13 @@ namespace InkopstodApp.API.Controllers
     {
         private readonly IProductRepository _repository;
         private readonly IMapper _mapper;
+        private readonly ApplicationDbContext _context; 
 
-        public ProductsController(IProductRepository repository, IMapper mapper)
+        public ProductsController(IProductRepository repository, IMapper mapper, ApplicationDbContext context)
         {
             _repository = repository;
             _mapper = mapper;
+            _context = context;
         }
 
         // GET: api/products
@@ -40,15 +44,15 @@ namespace InkopstodApp.API.Controllers
 
             return Ok(_mapper.Map<ProductDto>(product));
         }
-        // POST: api/products
-        [HttpPost]
-        public async Task<ActionResult<ProductDto>> CreateProduct(ProductCreateDto productCreateDto)
-        {
-            var product = _mapper.Map<Product>(productCreateDto);
-            await _repository.AddAsync(product);
 
-            var createdProduct = await _repository.GetByIdAsync(product.Id);
-            return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, _mapper.Map<ProductDto>(createdProduct));
+        [HttpPost]
+        public async Task<ActionResult<Product>> PostProduct(Product product)
+        {
+            // Kontrollera att _context är injicerad i konstruktorn
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction("GetProduct", new { id = product.Id }, product);
         }
 
         // PUT: api/products/5

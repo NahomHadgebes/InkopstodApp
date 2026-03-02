@@ -12,6 +12,7 @@ namespace InkopstodApp.Infrastructure.Persistence
         public DbSet<Category> Categories { get; set; }
         public DbSet<ShoppingList> ShoppingLists { get; set; }
         public DbSet<ShoppingListProduct> ShoppingListProducts { get; set; }
+        public DbSet<User> Users { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
