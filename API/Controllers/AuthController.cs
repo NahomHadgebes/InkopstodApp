@@ -1,94 +1,114 @@
 ﻿using InkopstodApp.Domain.Entities;
 using InkopstodApp.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(ApplicationDbContext context)
+    public AuthController(ApplicationDbContext context, IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
     }
 
     [HttpGet("users")]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<object>>> GetAllUsers()
     {
         var users = await _context.Users
             .Select(u => new { u.Id, u.Username, u.Role })
             .ToListAsync();
-
         return Ok(users);
     }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] User newUser)
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Register([FromBody] RegisterDto dto)
     {
-        if (await _context.Users.AnyAsync(u => u.Username == newUser.Username))
-        {
+        if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
             return BadRequest("Användarnamnet är upptaget.");
-        }
 
-        // Säkerställ att lösenordet sparas i rätt fält
-        _context.Users.Add(newUser);
+        var user = new User
+        {
+            Username = dto.Username,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+            Role = dto.Role ?? "Personal"
+        };
+
+        _context.Users.Add(user);
         await _context.SaveChangesAsync();
         return Ok(new { message = "Personal tillagd!" });
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
     {
-        // 1. Hitta användaren baserat på användarnamn
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Username == loginDto.Username);
 
-        // 2. Kontrollera om användaren finns och om lösenordet matchar PasswordHash
-        // (Eftersom du skickar 'password' från frontend i LoginDto)
-        if (user == null || user.PasswordHash != loginDto.Password)
-        {
+        if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.PasswordHash))
             return Unauthorized(new { message = "Fel användarnamn eller lösenord" });
-        }
 
-        // 3. Returnera användardata till frontend
+        var token = GenerateJwtToken(user);
+
         return Ok(new
         {
             id = user.Id,
             username = user.Username,
-            role = user.Role
+            role = user.Role,
+            token = token
         });
     }
 
-    // UPPDATERAD DELETE-ROUTE FÖR ATT MATCHA App.jsx: api/Auth/users/{id}
     [HttpDelete("users/{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteUser(int id)
     {
-        try
+        var user = await _context.Users.FindAsync(id);
+        if (user == null)
+            return NotFound(new { message = "Användaren hittades inte." });
+
+        if (user.Username.ToLower() == "admin")
+            return BadRequest(new { message = "Du kan inte radera huvudkontot för admin." });
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Användaren har raderats framgångsrikt." });
+    }
+
+    private string GenerateJwtToken(User user)
+    {
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = new[]
         {
-            var user = await _context.Users.FindAsync(id);
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role)
+        };
 
-            if (user == null)
-            {
-                return NotFound(new { message = "Användaren hittades inte." });
-            }
+        var token = new JwtSecurityToken(
+            issuer: _configuration["Jwt:Issuer"],
+            audience: _configuration["Jwt:Audience"],
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(8),
+            signingCredentials: creds
+        );
 
-            // Säkerhetsspärr: Förhindra radering av huvudkontot 'admin'
-            if (user.Username.ToLower() == "admin")
-            {
-                return BadRequest(new { message = "Du kan inte radera huvudkontot för admin." });
-            }
-
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Användaren har raderats framgångsrikt." });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Ett serverfel uppstod vid radering.", error = ex.Message });
-        }
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }
 
@@ -96,4 +116,11 @@ public class LoginDto
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+}
+
+public class RegisterDto
+{
+    public string Username { get; set; } = string.Empty;
+    public string Password { get; set; } = string.Empty;
+    public string? Role { get; set; }
 }

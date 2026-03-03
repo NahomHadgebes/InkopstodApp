@@ -5,9 +5,9 @@ using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Domain.Entities;
 using InkopstodApp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using Xunit;
-using Microsoft.EntityFrameworkCore;
 
 namespace InkopstodApp.Tests
 {
@@ -23,15 +23,12 @@ namespace InkopstodApp.Tests
             _mockRepo = new Mock<IProductRepository>();
             _mockMapper = new Mock<IMapper>();
 
-            // Skapa alternativ för en falsk databas i minnet
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()
                 .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
                 .Options;
 
-            var context = new ApplicationDbContext(options);
-
-            // Skapa controllern med de tre argument den nu kräver
-            _controller = new ProductsController(_mockRepo.Object, _mockMapper.Object, context);
+            _context = new ApplicationDbContext(options);
+            _controller = new ProductsController(_mockRepo.Object, _mockMapper.Object, _context);
         }
 
         [Fact]
@@ -58,14 +55,55 @@ namespace InkopstodApp.Tests
         public async Task GetProduct_WhenProductDoesNotExist_ReturnsNotFound()
         {
             // Arrange
-            int productId = 99;
-            _mockRepo.Setup(repo => repo.GetByIdAsync(productId)).ReturnsAsync((Product)null);
+            _mockRepo.Setup(repo => repo.GetByIdAsync(99)).ReturnsAsync((Product)null);
 
             // Act
-            var result = await _controller.GetProduct(productId);
+            var result = await _controller.GetProduct(99);
 
             // Assert
             Assert.IsType<NotFoundResult>(result.Result);
+        }
+
+        [Fact]
+        public async Task GetProducts_ReturnsAllProducts()
+        {
+            // Arrange
+            var products = new List<Product>
+            {
+                new Product { Id = 1, Name = "Mjölk" },
+                new Product { Id = 2, Name = "Bröd" }
+            };
+            var productDtos = new List<ProductDto>
+            {
+                new ProductDto { Id = 1, Name = "Mjölk" },
+                new ProductDto { Id = 2, Name = "Bröd" }
+            };
+
+            _mockRepo.Setup(repo => repo.GetAllAsync()).ReturnsAsync(products);
+            _mockMapper.Setup(m => m.Map<IEnumerable<ProductDto>>(products)).Returns(productDtos);
+
+            // Act
+            var result = await _controller.GetProducts();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result.Result);
+            var returned = Assert.IsAssignableFrom<IEnumerable<ProductDto>>(okResult.Value);
+            Assert.Equal(2, returned.Count());
+        }
+
+        [Fact]
+        public async Task DeleteProduct_CallsRepositoryDelete()
+        {
+            // Arrange
+            int productId = 1;
+            _mockRepo.Setup(repo => repo.DeleteAsync(productId)).Returns(Task.CompletedTask);
+
+            // Act
+            var result = await _controller.DeleteProduct(productId);
+
+            // Assert
+            _mockRepo.Verify(r => r.DeleteAsync(productId), Times.Once);
+            Assert.IsType<NoContentResult>(result);
         }
     }
 }

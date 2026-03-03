@@ -27,7 +27,7 @@ const SavedLists = ({ onUpdate, currentUser, title }) => {
   };
 
   const fetchLists = () => {
-    axios.get('https://localhost:7027/api/ShoppingLists')
+    axios.get('/api/ShoppingLists') 
       .then(response => setLists(response.data))
       .catch(error => console.error("Fel vid hämtning:", error));
   };
@@ -49,7 +49,7 @@ const SavedLists = ({ onUpdate, currentUser, title }) => {
   const handleConfirmDelete = async () => {
     if (listToDelete) {
       try {
-        await axios.delete(`https://localhost:7027/api/ShoppingLists/${listToDelete.id}`);
+        await axios.delete(`s/api/ShoppingLists/${listToDelete.id}`);
         setLists(lists.filter(l => l.id !== listToDelete.id));
         if (onUpdate) onUpdate();
         handleClose();
