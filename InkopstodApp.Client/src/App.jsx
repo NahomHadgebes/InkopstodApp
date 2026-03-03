@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+axios.defaults.baseURL = import.meta.env.VITE_API_URL;
+
+axios.interceptors.request.use((config) => {
+  const user = localStorage.getItem('inkopstod_user');
+  if (user) {
+    const { token } = JSON.parse(user);
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 import { 
   Container, Grid, Typography, Box, Chip, Paper, Button, Divider, 
   Badge, Snackbar, Alert, IconButton, Tooltip, Drawer, List, 
@@ -195,9 +205,9 @@ function App() {
 
   const fetchData = async () => {
     try {
-      const prodRes = await axios.get('https://localhost:7027/api/Products');
+      const prodRes = await axios.get('/api/Products');
       setProducts(prodRes.data);
-      const listRes = await axios.get('https://localhost:7027/api/ShoppingLists');
+      const listRes = await axios.get('/api/ShoppingLists');
       setSavedListsCount(listRes.data.length);
       if (listRes.data.length > 0) {
         setLastResident(listRes.data[listRes.data.length - 1].residentName);
@@ -207,14 +217,14 @@ function App() {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get('https://localhost:7027/api/Categories');
+      const res = await axios.get('/api/Categories');
       setDbCategories(res.data);
     } catch (error) { console.error("Kategorifel:", error); }
   };
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('https://localhost:7027/api/Auth/users');
+      const res = await axios.get('/api/Auth/users');
       setAllUsers(res.data);
     } catch (error) { console.error("Personalfel:", error); }
   };
@@ -256,7 +266,7 @@ function App() {
 
   const handleRegister = async () => {
     try {
-      await axios.post('https://localhost:7027/api/Auth/register', newUserData);
+      await axios.post('/api/Auth/register', newUserData);  
       setNewUserData({ username: '', password: '', role: 'Personal' });
       fetchUsers();
       setSnackbar({ open: true, message: 'Personal har lagts till!', severity: 'success' });
@@ -271,7 +281,7 @@ function App() {
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
     try {
-      await axios.delete(`https://localhost:7027/api/Auth/users/${userToDelete.id}`);
+      await axios.delete(`/api/Auth/users/${userToDelete.id}`);
       setAllUsers(prev => prev.filter(u => u.id !== userToDelete.id));
       setOpenDeleteDialog(false);
       setUserToDelete(null);
@@ -290,7 +300,7 @@ function App() {
   const confirmDeleteProduct = async () => {
     if (!productToDelete) return;
     try {
-      await axios.delete(`https://localhost:7027/api/Products/${productToDelete.id}`);
+      await axios.delete(`/api/Products/${productToDelete.id}`);
       setProducts(prev => prev.filter(p => p.id !== productToDelete.id));
       setOpenProductDeleteDialog(false);
       setProductToDelete(null);
@@ -306,7 +316,7 @@ function App() {
     const selectedCat = dbCategories.find(c => c.name === newProduct.categoryName);
     const payload = { name: newProduct.name, imageUrl: newProduct.imageUrl, categoryId: selectedCat ? selectedCat.id : 1 };
     try {
-      await axios.post('https://localhost:7027/api/Products', payload);
+      await axios.post('/api/Products', payload);
       setNewProduct({ ...newProduct, name: '', imageUrl: '' });
       setOpenAddDialog(false);
       fetchData();
@@ -320,9 +330,9 @@ function App() {
       return;
     }
     try {
-      const res = await axios.post(`https://localhost:7027/api/ShoppingLists?residentName=${encodeURIComponent(residentName)}`);
+      const res = await axios.post(`/api/ShoppingLists?residentName=${encodeURIComponent(residentName)}`);
       for (const item of cart) {
-        await axios.post(`https://localhost:7027/api/ShoppingLists/${res.data.id}/products`, {
+        await axios.post(`/api/ShoppingLists/${res.data.id}/products`, {
           productId: item.id, quantity: item.quantity
         });
       }

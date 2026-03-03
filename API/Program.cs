@@ -1,93 +1,102 @@
-using InkopstodApp.API.Middleware;
 using InkopstodApp.Application.Interfaces;
 using InkopstodApp.Application.Mapping;
-using InkopstodApp.Domain.Entities;
 using InkopstodApp.Infrastructure.Persistence;
 using InkopstodApp.Infrastructure.Repositories;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
-namespace InkopstodApp.API
-{
-    public class Program
+var builder = WebApplication.CreateBuilder(args);
+
+// --- Databas ---
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// --- Repository-registrering ---
+builder.Services.AddScoped<IProductRepository, ProductRepository>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+builder.Services.AddScoped<IShoppingListRepository, ShoppingListRepository>();
+
+// --- AutoMapper ---
+builder.Services.AddAutoMapper(typeof(MappingProfile));
+
+// --- JWT-autentisering ---
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("JWT Key saknas i appsettings.json");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        public static void Main(string[] args)
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            var builder = WebApplication.CreateBuilder(args);
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
 
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddAuthorization();
 
-            builder.Services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlServer(connectionString));
+// --- CORS – tillåt frontend ---
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
-            // Repositories (Kopplar Interface till Implementation)
-            builder.Services.AddScoped<IProductRepository, ProductRepository>();
-            builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
-            builder.Services.AddScoped<IShoppingListRepository, ShoppingListRepository>();
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+// --- Swagger-konfiguration för JWT ---
+builder.Services.AddSwaggerGen(options =>
+{
+    // Definiera säkerhetsschemat "Bearer"
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Skriv 'Bearer' följt av ett mellanslag och din token.\n\nExempel: Bearer eyJhbG..."
+    });
 
-            // Registrera AutoMapper och sök efter profiler i Application-projektet
-            builder.Services.AddAutoMapper(typeof(MappingProfile).Assembly);
-
-            builder.Services.AddControllers()
-                .AddJsonOptions(options =>
+    // Applicera kravet på Authorize-knappen globalt
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
                 {
-                    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
-                });
-
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
-
-            builder.Services.AddCors(options =>
-            {
-                options.AddPolicy("AllowReact",
-                    policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-            });
-
-            var app = builder.Build();
-
-            app.UseMiddleware<ExceptionMiddleware>();
-
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
-
-            app.UseCors("AllowReact");
-
-            app.UseHttpsRedirection();
-
-            app.UseAuthorization();
-
-            app.MapControllers();
-
-            // Skapa en "Scope" för att komma åt databasen vid uppstart
-            using (var scope = app.Services.CreateScope())
-            {
-                var services = scope.ServiceProvider;
-                var context = services.GetRequiredService<ApplicationDbContext>();
-
-                if (!context.Users.Any())
-                {
-                    context.Users.Add(new User
-                    {
-                        Username = "admin",
-                        PasswordHash = "admin123",
-                        Role = "Admin"
-                    });
-
-                    context.Users.Add(new User
-                    {
-                        Username = "personal",
-                        PasswordHash = "user123",
-                        Role = "Personal"
-                    });
-
-                    context.SaveChanges();
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
                 }
-            }
-
-            app.Run();
+            },
+            new string[] {}
         }
-    }
+    });
+});
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
+
+app.UseMiddleware<InkopstodApp.API.Middleware.ExceptionMiddleware>();
+app.UseCors("AllowFrontend");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+app.Run();
